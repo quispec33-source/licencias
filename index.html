@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1F3A5F">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Licencias">
+  <meta name="robots" content="noindex">
+  <title>Administrador de licencias</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icono.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icono-180.png">
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header class="barra">
+    <button id="btnVolver" class="icono oculto" aria-label="Volver">‹</button>
+    <h1 id="titulo">Licencias</h1>
+    <span id="etiquetaSim" class="etiqueta oculto">SIMULACIÓN</span>
+    <button id="btnActualizar" class="icono oculto" aria-label="Actualizar">⟳</button>
+    <button id="btnMenu" class="icono oculto" aria-label="Menú">⋮</button>
+  </header>
+  <div id="menu" class="menu oculto">
+    <button id="btnBloquear">Bloquear</button>
+    <button id="btnReconfigurar">Cambiar configuración…</button>
+  </div>
+
+  <main>
+    <!-- Sin WebCrypto (página sin https) -->
+    <section id="vistaSinCripto" class="vista oculto">
+      <div class="tarjeta aviso">
+        <h2>Esta página necesita https</h2>
+        <p>El navegador solo permite firmar claves en páginas seguras (https, o localhost en la PC).
+          Ábrala desde su dirección https.</p>
+      </div>
+    </section>
+
+    <!-- Primera vez -->
+    <section id="vistaConfig" class="vista oculto">
+      <div class="tarjeta">
+        <h2>Configurar este teléfono</h2>
+        <p class="nota">Se hace una sola vez. La clave privada y el token se guardan <b>solo en este teléfono</b>,
+          cifrados con su contraseña. No se suben a ningún sitio.</p>
+        <label>URL de la aplicación web (termina en /exec)
+          <input id="cfgUrl" type="url" inputmode="url" autocomplete="off" placeholder="https://script.google.com/macros/s/…/exec"></label>
+        <label>Token del administrador
+          <input id="cfgToken" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <label>Clave privada (archivo clave_privada.pem)
+          <input id="cfgArchivo" type="file" accept=".pem,text/plain,application/x-pem-file"></label>
+        <details>
+          <summary>…o pegar el texto de la clave</summary>
+          <textarea id="cfgPem" rows="5" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+        </details>
+        <label>Contraseña (mínimo 8 caracteres)
+          <input id="cfgClave1" type="password" autocomplete="new-password"></label>
+        <label>Repita la contraseña
+          <input id="cfgClave2" type="password" autocomplete="new-password"></label>
+        <p id="cfgError" class="error"></p>
+        <div class="acciones">
+          <button id="cfgCancelar" class="secundario oculto">Cancelar</button>
+          <button id="cfgGuardar" class="principal">Guardar y entrar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contraseña -->
+    <section id="vistaAcceso" class="vista oculto">
+      <form id="formAcceso" class="tarjeta">
+        <h2>Administrador de licencias</h2>
+        <label>Contraseña
+          <input id="accClave" type="password" autocomplete="current-password"></label>
+        <p id="accError" class="error"></p>
+        <div class="acciones">
+          <button type="submit" class="principal">Entrar</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Lista -->
+    <section id="vistaLista" class="vista oculto">
+      <div class="filtros">
+        <select id="filEstado" aria-label="Estado">
+          <option>Pendiente</option><option>Aprobada</option><option>Rechazada</option><option>Reemplazada</option><option value="">(Todos)</option>
+        </select>
+        <select id="filPrograma" aria-label="Programa"><option value="">(Todos los programas)</option></select>
+        <input id="filBuscar" type="search" placeholder="Buscar nombre, correo, PC, operación…">
+      </div>
+      <p id="estado" class="nota"></p>
+      <p id="error" class="error"></p>
+      <ul id="lista" class="lista"></ul>
+    </section>
+
+    <!-- Detalle -->
+    <section id="vistaDetalle" class="vista oculto">
+      <div class="tarjeta">
+        <h2 id="detNombre"></h2>
+        <p class="nota"><span id="detId"></span> · <b id="detEstado"></b> · <span id="detFecha"></span></p>
+        <dl class="datos">
+          <dt>Correo</dt><dd id="detCorreo"></dd>
+          <dt>WhatsApp</dt><dd id="detWhatsApp"></dd>
+          <dt>Programa</dt><dd id="detPrograma"></dd>
+          <dt>PC</dt><dd id="detEquipo" class="mono"></dd>
+          <dt>Nombre PC</dt><dd id="detNombrePc"></dd>
+          <dt>Placa</dt><dd id="detPlaca"></dd>
+          <dt>BIOS</dt><dd id="detBios" class="pequeno"></dd>
+        </dl>
+        <div class="cupo">
+          <b id="detCupo"></b>
+          <p id="detExcede" class="error oculto">⚠ Ya llegó al máximo de PC: una más requiere una compra nueva.</p>
+          <ul id="detOtras" class="otras"></ul>
+        </div>
+        <p id="detNotas" class="error"></p>
+      </div>
+
+      <div id="panelAprobar" class="tarjeta oculto">
+        <h3>Verificar el pago y aprobar</h3>
+        <label>N.° de operación (voucher)
+          <input id="aprOperacion" type="text" inputmode="numeric" autocomplete="off"></label>
+        <label>Monto pagado
+          <input id="aprMonto" type="text" inputmode="decimal" autocomplete="off"></label>
+        <button id="btnGenerar" class="principal ancho naranja">Generar clave y enviar</button>
+      </div>
+
+      <div id="panelAprobada" class="tarjeta oculto">
+        <h3>Licencia emitida</h3>
+        <p id="aprDatos" class="nota"></p>
+        <textarea id="aprClave" rows="4" readonly class="mono pequeno"></textarea>
+        <div class="acciones">
+          <button id="btnWhatsApp" class="principal verde">Enviar por WhatsApp</button>
+          <button id="btnCopiar" class="secundario">Copiar clave</button>
+        </div>
+      </div>
+
+      <div class="tarjeta">
+        <label>Nota (motivo)
+          <input id="detNota" type="text" autocomplete="off"></label>
+        <div class="acciones">
+          <button id="btnRechazar" class="secundario">Rechazar</button>
+          <button id="btnReemplazar" class="secundario">PC reemplazada (libera cupo)</button>
+        </div>
+        <p id="detError" class="error"></p>
+      </div>
+    </section>
+  </main>
+
+  <div id="ocupado" class="ocupado oculto"><div class="girando"></div></div>
+  <div id="aviso" class="toast oculto"></div>
+
+  <script src="licencia.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
