@@ -91,5 +91,15 @@ const Licencias = (() => {
 
   const disponible = () => !!subtle;
 
-  return { formatearEquipo, importarPrivada, firmar, cifrar, descifrar, disponible, hoy };
+  /** Hoy + 1 año en yyyy-MM-dd (29/02 → 28/02, como DateOnly.AddYears en el programa). */
+  function enUnAnio() {
+    const d = new Date();
+    const mes = d.getMonth();
+    d.setFullYear(d.getFullYear() + 1);
+    if (d.getMonth() !== mes) d.setDate(0);
+    const dos = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+  }
+
+  return { formatearEquipo, importarPrivada, firmar, cifrar, descifrar, disponible, hoy, enUnAnio };
 })();

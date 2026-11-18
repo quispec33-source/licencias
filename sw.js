@@ -1,5 +1,5 @@
 // Guarda la aplicación para que abra rápido y sin señal; los datos (registro de Google Sheets) siempre van por la red.
-const CACHE = "licencias-v1";
+const CACHE = "licencias-v4";
 const ARCHIVOS = ["./", "index.html", "estilos.css", "licencia.js", "app.js", "manifest.webmanifest",
   "icono.svg", "icono-180.png", "icono-192.png", "icono-512.png"];
 

@@ -5,8 +5,11 @@
 (() => {
   const ALMACEN = "adminLicencias.v1";
   const BLOQUEO_MS = 5 * 60 * 1000; // vuelve a pedir la contraseña tras 5 min en segundo plano
-  const ESTADOS_ACTIVOS = "Aprobada";
   const $ = (id) => document.getElementById(id);
+  const esAnual = (s) => texto(s.Plan).toUpperCase() === "ANUAL";
+  const planTexto = (s) => (esAnual(s) ? "Anual" : "De por vida");
+  /** Aprobada y no vencida: ocupa un cupo del cliente. */
+  const vigente = (s) => s.Estado === "Aprobada" && (!s.Vence || s.Vence >= Licencias.hoy());
 
   let sesion = null;       // { url, token, clave: CryptoKey }
   let solicitudes = [];
@@ -207,7 +210,7 @@
       ? filas.map((s) => `<li data-id="${escapar(s.Id)}">
           <span class="nombre">${escapar(s.Nombre)}<span class="chip ${escapar(s.Estado)}">${escapar(s.Estado)}</span></span>
           <span class="monto">${escapar(s.Monto)}</span>
-          <span class="sub">${escapar(s.Id)} · ${escapar(s.Fecha)} · ${escapar(s.Programa)}</span>
+          <span class="sub">${escapar(s.Id)} · ${escapar(s.Fecha)} · ${escapar(s.Programa)} · <b>${planTexto(s)}</b>${s.Vence ? " · vence " + escapar(s.Vence) : ""}${s.Voucher ? " · 🧾 voucher" : ""}</span>
           <span class="sub">PC ${escapar(s.Equipo)} · ${escapar(s.NombrePC)}${s.WhatsApp ? " · " + escapar(s.WhatsApp) : ""}</span>
         </li>`).join("")
       : '<li class="vacia">No hay solicitudes con estos filtros.</li>';
@@ -229,7 +232,7 @@
     ? texto(a.Correo).toLowerCase() === texto(b.Correo).toLowerCase()
     : !!a.WhatsApp && digitos(a.WhatsApp) === digitos(b.WhatsApp);
   const maxPc = (s) => (programas[s.Programa] && Number(programas[s.Programa].maxPc)) || 10;
-  const pcsActivas = (s) => solicitudes.filter((f) => f.Programa === s.Programa && f.Estado === ESTADOS_ACTIVOS && (f === s || mismoCliente(f, s))).length;
+  const pcsActivas = (s) => solicitudes.filter((f) => f.Programa === s.Programa && vigente(f) && (f === s || mismoCliente(f, s))).length;
   const nombrePrograma = (s) => (programas[s.Programa] && programas[s.Programa].nombre) || s.Programa;
 
   function abrirDetalle() {
@@ -241,6 +244,14 @@
     $("detCorreo").textContent = s.Correo || "—";
     $("detWhatsApp").textContent = s.WhatsApp || "—";
     $("detPrograma").textContent = nombrePrograma(s);
+    const conVoucher = /^https?:\/\//i.test(texto(s.Voucher));
+    $("detVoucher").innerHTML = conVoucher
+      ? `cargando la imagen… · <a href="${escapar(s.Voucher)}" target="_blank" rel="noopener">abrir en Drive</a>`
+      : "— (llegará por WhatsApp)";
+    $("detVoucherCaja").classList.add("oculto");
+    $("detVoucherCaja").classList.remove("grande");
+    if (conVoucher) cargarVoucher(s);
+    $("detPlan").textContent =planTexto(s) + (s.Vence ? ` · vence ${s.Vence}` : esAnual(s) && s.Estado === "Pendiente" ? " · 1 año desde la aprobación" : "");
     $("detEquipo").textContent = s.Equipo;
     $("detNombrePc").textContent = s.NombrePC || "—";
     $("detPlaca").textContent = s.Placa || "—";
@@ -269,21 +280,39 @@
     mostrar("vistaDetalle");
   }
 
+  /** Trae la imagen del voucher (el script la lee de su Drive) y la muestra en el detalle. */
+  async function cargarVoucher(s) {
+    try {
+      const r = await llamar({ accion: "verVoucher", id: s.Id });
+      if (actual !== s) return;
+      const tipo = /^image\/(png|jpeg)$/.test(texto(r.tipo)) ? r.tipo : "image/jpeg";
+      $("detVoucherImg").src = `data:${tipo};base64,${r.datos}`;
+      $("detVoucherCaja").classList.remove("oculto");
+      $("detVoucher").innerHTML = `🧾 abajo · <a href="${escapar(s.Voucher)}" target="_blank" rel="noopener">abrir en Drive</a>`;
+    } catch (e) {
+      if (actual === s) $("detVoucher").innerHTML = `no se pudo cargar (${escapar(e.message)}) · <a href="${escapar(s.Voucher)}" target="_blank" rel="noopener">abrir en Drive</a>`;
+    }
+  }
+  $("detVoucherImg").addEventListener("click", () => $("detVoucherCaja").classList.toggle("grande"));
+
   $("btnGenerar").addEventListener("click", async () => {
     const s = actual;
     const operacion = $("aprOperacion").value.trim(), monto = $("aprMonto").value.trim();
     $("detError").textContent = "";
-    if (!operacion) { $("detError").textContent = "Escriba el número de operación del voucher."; $("aprOperacion").focus(); return; }
+    const incluida = texto(s.Notas).startsWith("Incluida");
+    if (!operacion && !incluida) { $("detError").textContent = "Escriba el número de operación del voucher."; $("aprOperacion").focus(); return; }
     const activas = pcsActivas(s), max = maxPc(s);
     if (activas >= max && !confirm(`Este cliente ya tiene ${activas} PC activas (máximo ${max}).\n\n¿Aprobar de todos modos?`)) return;
-    if (!confirm(`¿Pago verificado?\n\n${s.Nombre}\nPC ${s.Equipo} (${s.NombrePC})\nMonto ${monto} · operación ${operacion}\n\nSe generará la clave y se enviará al programa del cliente.`)) return;
+    // PC incluida en una compra anual: el mismo vencimiento de esa compra (viene en la fila).
+    const vence = /^\d{4}-\d{2}-\d{2}$/.test(texto(s.Vence)) ? s.Vence : esAnual(s) ? Licencias.enUnAnio() : "";
+    if (!confirm(`¿Pago verificado?\n\n${s.Nombre}\nPC ${s.Equipo} (${s.NombrePC})\nLicencia ${planTexto(s).toLowerCase()}${vence ? " (vence el " + vence + ")" : ""}\nMonto ${monto} · operación ${operacion}\n\nSe generará la clave y se enviará al programa del cliente.`)) return;
     ocupado(true);
     try {
       const clave = await Licencias.firmar(sesion.clave, {
-        nombre: s.Nombre, equipo: s.Equipo, id: s.Id, correo: texto(s.Correo).trim() || null, programa: s.Programa,
+        nombre: s.Nombre, equipo: s.Equipo, id: s.Id, correo: texto(s.Correo).trim() || null, programa: s.Programa, vence: vence || null,
       });
-      await llamar({ accion: "aprobar", id: s.Id, clave, operacion, monto });
-      Object.assign(s, { Estado: "Aprobada", Clave: clave, Operacion: operacion, Monto: monto, FechaAprobacion: new Date().toLocaleString() });
+      await llamar({ accion: "aprobar", id: s.Id, clave, operacion, monto, vence });
+      Object.assign(s, { Estado: "Aprobada", Clave: clave, Operacion: operacion, Monto: monto, Vence: vence, FechaAprobacion: new Date().toLocaleString() });
       abrirDetalle();
       aviso("Aprobada. Ahora pulse «Enviar por WhatsApp».");
     } catch (e) {
@@ -294,7 +323,8 @@
   });
 
   function mensajeCliente(s) {
-    return `Hola ${s.Nombre}, su pago fue verificado. Su licencia de ${nombrePrograma(s)} para la PC ${s.Equipo} ya está activa.\n\n` +
+    const plazo = s.Vence ? `licencia anual (vence el ${s.Vence.split("-").reverse().join("/")})` : "licencia de por vida";
+    return `Hola ${s.Nombre}, su pago fue verificado. Su ${plazo} de ${nombrePrograma(s)} para la PC ${s.Equipo} ya está activa.\n\n` +
       "Si el programa está abierto en la ventana Activar Pro, se activa solo. Si no, abra Activar Pro, pegue esta clave y pulse Activar:\n\n" +
       s.Clave + "\n\nGuárdela: le servirá si formatea esta PC. ¡Gracias por su compra!";
   }
